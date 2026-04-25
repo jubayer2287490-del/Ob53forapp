@@ -1,1 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JUBAYER Control Panel v1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;600;800&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #06b6d4; --bg: #040b19; --card: rgba(10, 25, 47, 0.7); --text: #e2e8f0; }
+        body { background: var(--bg); color: var(--text); font-family: 'SF Pro Display', sans-serif; height: 100dvh; overflow: hidden; margin: 0; }
+        .orbitron { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); }
+        .apple-card { background: var(--card); border: 1px solid rgba(229, 231, 235, 0.1); border-radius: 24px; backdrop-filter: blur(10px); position: relative; overflow: hidden; }
+        .app-input { background: rgba(2, 6, 12, 0.5); border: 1px solid rgba(229, 231, 235, 0.1); border-radius: 16px; width: 100%; padding: 16px 20px; color: #fff; outline: none; transition: 0.3s; }
+        .app-input:focus { border-color: var(--accent); box-shadow: 0 0 10px rgba(6, 182, 212, 0.3); }
+        .app-input:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+        .btn-ios { background: var(--accent); color: #040b19; font-weight: 800; border-radius: 16px; transition: 0.3s; border: none; cursor: pointer; }
+        .btn-ios:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-kill { background: rgba(239, 68, 68, 0.1); color: #f87171; border-radius: 12px; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.2); }
+        #progress-bar { position: absolute; bottom: 0; left: 0; height: 4px; background: var(--accent); width: 100%; transition: width 1s linear; box-shadow: 0 0 10px var(--accent); }
+        @keyframes timer-blink { 50% { opacity: 0.3; color: #ef4444; } }
+        .timer-warning { animation: timer-blink 1s infinite; color: #ef4444 !important; }
+        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); padding: 12px 25px; border-radius: 50px; background: #fff; color: #000; font-weight: 700; font-size: 11px; z-index: 2000; transition: 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+        #toast.active { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+    <audio id="snd-click" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
+    <audio id="snd-start" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
+    <audio id="snd-stop" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/2569/2569-preview.mp3"></audio>
+    <audio id="snd-alert" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3"></audio>
+    <audio id="snd-warning" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/1001/1001-preview.mp3" loop></audio>
 
+    <div id="toast">SYSTEM READY</div>
+
+    <div class="flex flex-col h-full max-w-md mx-auto px-6 relative" style="background: #040b19;">
+        <header class="pt-10 pb-6 flex justify-between items-center border-b border-gray-800 mb-6">
+            <div>
+                <h1 class="text-2xl font-extrabold tracking-tighter text-white">JUBAYER <span class="text-cyan-500">TCP</span></h1>
+                <p class="text-[9px] uppercase tracking-[0.3em] font-bold text-gray-500"Game id 6772674139</p>
+            </div>
+            <div class="bg-gray-900 px-4 py-2 rounded-full border border-gray-800 flex items-center gap-2">
+                <div id="dot" class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                <span id="stext" class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Offline</span>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto no-scrollbar space-y-6 pb-28">
+            <div id="timer-cont" class="apple-card p-10 text-center hidden border-cyan-900/30">
+                <p class="text-[10px] text-gray-500 font-bold uppercase mb-1">Live Timeline</p>
+                <h2 id="timer-display" class="orbitron text-5xl font-black text-cyan-400">00:00:00</h2>
+                <div id="progress-bar"></div>
+            </div>
+
+            <div class="space-y-3">
+                <input id="name" type="text" placeholder="Username" class="app-input" oninput="saveData()">
+                <input id="uid" type="text" placeholder="UID" class="app-input" oninput="saveData()">
+                <input id="pw" type="password" placeholder="Password" class="app-input" oninput="saveData()">
+            </div>
+
+            <button id="start-btn" onclick="control('start')" class="btn-ios w-full py-5 active:scale-95 transition-all">Start Execution</button>
+            <button id="stop-btn" onclick="control('stop')" class="btn-kill w-full py-3 opacity-60 text-[10px] font-bold uppercase tracking-widest">Emergency Stop</button>
+
+            <div class="apple-card h-40 flex flex-col bg-black/30 border-none">
+                <div class="px-5 py-3 border-b border-gray-800 text-[9px] font-bold text-gray-500 uppercase flex justify-between">
+                    <span>Logs</span>
+                    <span class="text-cyan-500 animate-pulse">●</span>
+                </div>
+                <div id="logs" class="p-5 overflow-y-auto text-[11px] font-mono text-green-400 no-scrollbar h-full"></div>
+            </div>
+        </main>
+
+        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto h-24 bg-black/80 backdrop-blur-xl border-t border-gray-800 flex justify-around items-center px-12 z-50">
+            <button onclick="location.reload(); playSound('snd-click');" class="bg-transparent border-none text-cyan-500">
+                <div class="text-2xl">🏠</div><div class="text-[9px] font-bold mt-1 uppercase">Home</div>
+            </button>
+            <button onclick="openAdmin()" class="bg-transparent border-none text-gray-600">
+                <div class="text-2xl">⚙️</div><div class="text-[9px] font-bold mt-1 uppercase">Admin</div>
+            </button>
+        </nav>
+
+        <div id="admin-panel" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end">
+            <div class="w-full bg-[#0a192f] rounded-t-[35px] p-8 border-t border-cyan-900/50">
+                <div class="w-12 h-1 bg-gray-700 mx-auto mb-6 rounded-full" onclick="closeAdmin()"></div>
+                
+                <div id="admin-auth" class="space-y-4">
+                    <h3 class="text-center text-xs font-bold text-white uppercase tracking-widest">Security Override</h3>
+                    <input id="adm-pass" type="password" placeholder="Admin Key" class="app-input text-center">
+                    <button onclick="loadStats()" class="btn-ios w-full py-4">Authenticate</button>
+                </div>
+
+                <div id="admin-content" class="hidden space-y-4">
+                    <div class="bg-cyan-950/30 p-4 rounded-2xl border border-cyan-900/30">
+                        <p class="text-[10px] text-cyan-500 font-bold uppercase mb-2 text-center">Global Session (Min)</p>
+                        <div class="flex gap-2">
+                            <input id="global-dur" type="number" class="app-input !py-2 !text-center">
+                            <button onclick="setGlobalTime()" class="btn-ios px-4 text-[10px]">APPLY ALL</button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between px-2 text-[10px] font-bold text-gray-500 uppercase">
+                        <span>Active Sessions</span>
+                        <span class="text-cyan-500" onclick="loadStats()">Refresh</span>
+                    </div>
+                    <div id="user-list" class="max-h-48 overflow-y-auto space-y-2 no-scrollbar"></div>
+                </div>
+                <button onclick="closeAdmin()" class="w-full py-4 text-gray-600 text-[10px] font-bold uppercase mt-2">Dismiss</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let countdown, totalTime = 0, isWarning = false;
+        const fieldIds = ['name', 'uid', 'pw'];
+
+        function playSound(id) {
+            const s = document.getElementById(id);
+            if(s) { s.currentTime = 0; s.play().catch(() => {}); }
+        }
+
+        window.onload = () => {
+            fieldIds.forEach(id => {
+                const val = localStorage.getItem('v6_' + id);
+                if(val) document.getElementById(id).value = val;
+            });
+            checkBotStatus();
+        };
+
+        function saveData() { fieldIds.forEach(id => localStorage.setItem('v6_' + id, document.getElementById(id).value)); }
+        function msg(t) { 
+            const e=document.getElementById('toast'); e.innerText=t.toUpperCase(); e.classList.add('active'); 
+            setTimeout(()=>e.classList.remove('active'),3000); 
+        }
+
+        function openAdmin() { playSound('snd-click'); document.getElementById('admin-panel').classList.remove('hidden'); }
+        function closeAdmin() { document.getElementById('admin-panel').classList.add('hidden'); }
+
+        // --- Core Status Sync ---
+        function updateStat(run, rem = 0) {
+            const dot = document.getElementById('dot'), stext = document.getElementById('stext'), 
+                  timerCont = document.getElementById('timer-cont'), startBtn = document.getElementById('start-btn');
+            
+            if(run) {
+                dot.className = "w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_10px_#06b6d4]";
+                stext.innerText = "Active"; stext.style.color = "#06b6d4";
+                fieldIds.forEach(id => document.getElementById(id).disabled = true); // Lock Inputs
+                startBtn.disabled = true; startBtn.style.opacity = "0.3";
+                totalTime = rem; 
+                startTimer(Math.floor(rem));
+            } else {
+                dot.className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse";
+                stext.innerText = "Offline"; stext.style.color = "#ef4444";
+                fieldIds.forEach(id => document.getElementById(id).disabled = false); // Unlock Inputs
+                startBtn.disabled = false; startBtn.style.opacity = "1";
+                clearInterval(countdown);
+                timerCont.classList.add('hidden'); 
+                document.getElementById('snd-warning').pause(); 
+                isWarning = false;
+            }
+        }
+
+        function startTimer(sec) {
+            clearInterval(countdown);
+            if(sec <= 0) { updateStat(false); return; }
+            let current = sec;
+            const timerEl = document.getElementById('timer-display'), prog = document.getElementById('progress-bar'), sndWarn = document.getElementById('snd-warning');
+            document.getElementById('timer-cont').classList.remove('hidden');
+            
+            countdown = setInterval(() => {
+                if(current <= 0) { updateStat(false); return; }
+                prog.style.width = (current / totalTime) * 100 + "%";
+                
+                if(current <= 60) {
+                    timerEl.classList.add('timer-warning');
+                    if(!isWarning) { playSound('snd-warning'); isWarning = true; }
+                } else {
+                    timerEl.classList.remove('timer-warning');
+                    sndWarn.pause(); isWarning = false;
+                }
+                
+                let h=Math.floor(current/3600), m=Math.floor((current%3600)/60), s=current%60;
+                timerEl.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                current--;
+            }, 1000);
+        }
+
+        async function control(act) {
+            playSound('snd-click');
+            const name = document.getElementById('name').value, uid = document.getElementById('uid').value, pw = document.getElementById('pw').value;
+            if(!name || !uid || !pw) return msg("Fields Required");
+            const res = await fetch('/api/control', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: act, name, uid, password: pw})});
+            const d = await res.json(); 
+            msg(d.message);
+            if(d.status === 'success') {
+                act === 'start' ? playSound('snd-start') : playSound('snd-stop');
+                updateStat(d.running, d.rem_sec);
+            }
+        }
+
+        async function checkBotStatus() {
+            const name = document.getElementById('name').value;
+            if(!name) return;
+            const res = await fetch('/api/control', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'check_status', name})});
+            const d = await res.json();
+            if(d.running) updateStat(true, d.rem_sec);
+        }
+
+        // --- Socket Listeners ---
+        socket.on('time_sync', (m) => {
+            if (m.user === document.getElementById('name').value) {
+                playSound('snd-alert');
+                msg("Timeline Adjusted");
+                updateStat(true, m.rem_sec);
+            }
+        });
+
+        socket.on('global_sync', (m) => {
+            if (document.getElementById('name').value) {
+                playSound('snd-alert');
+                msg("Global Sync: Time Reset");
+                updateStat(true, m.new_rem_sec);
+            }
+        });
+
+        socket.on('status_update', (m) => {
+            if (m.user === document.getElementById('name').value && !m.running) {
+                playSound('snd-stop');
+                msg("Remote Termination");
+                updateStat(false);
+            }
+        });
+
+        socket.on('new_log', (m) => {
+            if (m.user === document.getElementById('name').value) {
+                const l = document.getElementById('logs');
+                l.innerHTML += `<div><span class="text-cyan-600">></span> ${m.data}</div>`;
+                l.scrollTop = l.scrollHeight;
+            }
+        });
+
+        // --- Admin Functions ---
+        async function loadStats() {
+            const pass = document.getElementById('adm-pass').value;
+            const res = await fetch('/api/admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: pass, action: "get_stats"})});
+            const d = await res.json();
+            if(d.status === 'success') {
+                document.getElementById('admin-auth').classList.add('hidden');
+                document.getElementById('admin-content').classList.remove('hidden');
+                document.getElementById('user-list').innerHTML = d.users.map(u => `
+                    <div class="bg-black/40 p-3 rounded-xl flex justify-between items-center border border-gray-800">
+                        <div><p class="text-[10px] font-bold text-white">${u.name}</p><p class="text-[8px] text-gray-500">${u.rem}m left</p></div>
+                        <div class="flex gap-2">
+                            <button onclick="editT('${u.name}')" class="text-cyan-500 text-[9px] font-bold">EDIT</button>
+                            <button onclick="adminStop('${u.name}')" class="btn-kill px-2 py-1">KILL</button>
+                        </div>
+                    </div>`).join('');
+            } else msg("Access Denied");
+        }
+
+        async function setGlobalTime() {
+            const dur = document.getElementById('global-dur').value, pass = document.getElementById('adm-pass').value;
+            if(!dur) return msg("Enter Minutes");
+            const res = await fetch('/api/admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: pass, action: "set_global", duration: dur})});
+            const d = await res.json(); msg(d.message);
+        }
+
+        async function editT(u) {
+            const m = prompt("New Duration (min):"); if(!m) return;
+            const pass = document.getElementById('adm-pass').value;
+            await fetch('/api/admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: pass, action: "update_time", user: u, mins: m})});
+            loadStats();
+        }
+
+        async function adminStop(u) {
+            if(!confirm("Kill " + u + "?")) return;
+            const pass = document.getElementById('adm-pass').value;
+            await fetch('/api/admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: pass, action: "admin_stop", user: u})});
+            loadStats();
+        }
+    </script>
+</body>
+</html>
